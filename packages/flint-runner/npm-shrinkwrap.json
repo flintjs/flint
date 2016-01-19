@@ -6730,9 +6730,9 @@
       "resolved": "https://registry.npmjs.org/supports-color/-/supports-color-3.1.2.tgz"
     },
     "surge": {
-      "version": "0.17.4",
+      "version": "0.17.6",
       "from": "surge@latest",
-      "resolved": "https://registry.npmjs.org/surge/-/surge-0.17.4.tgz",
+      "resolved": "https://registry.npmjs.org/surge/-/surge-0.17.6.tgz",
       "dependencies": {
         "asn1": {
           "version": "0.1.11",
