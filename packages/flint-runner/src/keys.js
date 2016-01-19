@@ -15,9 +15,42 @@ const proc = process // cache for keypress
 
 import Surge from 'surge'
 const out = proc.stdout
-const surge = Surge({ platform: 'flint.love', input: proc.stdin, output: out })
+const surge = Surge({
+  platform: 'roguemont.com',
+  input: proc.stdin,
+  output: out
+})
 
+let hooks = {
+  preAuth: function (req, resume) {
+    out.isTTY = false
+    resume()
+  },
+  postAuth: function (req, resume) {
+    out.isTTY = true
+    resume()
+  },
+  preDomain: function (req, resume) {
+    out.isTTY = false
+    resume()
+  },
+  postDomain: function (req, resume) {
+    out.isTTY = true
+    resume()
+  }
+}
 let stopped = false
+
+// hooks.preAuth() {
+//   out.isTTY = false
+// }
+//
+//
+// hooks.postPublish() {
+//   console.log('🚀🚀🚀🚀')
+//   resume()
+// }
+
 
 export function init() {
   start()
@@ -90,13 +123,32 @@ function start() {
           console.log(`\n  Publishing to surge...`)
           stop()
           out.isTTY = false
-          surge.publish({
-            postPublish() {
-              console.log('🚀🚀🚀🚀')
-              resume()
-            }
-          })({})
+          surge.publish(hooks)({
+            project: '.flint/build',
+            domain: 'my-flint-test.roguemont.com'
+          })
           out.isTTY = true
+          break
+        case 'w': // See who you are logged in as
+          stop()
+          console.log(hooks)
+          surge.whoami(hooks)({})
+          // resume()
+          break
+        case 'l': // List all your published projects
+          surge.list(hooks)({})
+          break
+        case '>':
+          surge.login(hooks)({})
+          break
+        case '<':
+          surge.logout(hooks)({})
+          break
+        case 'x': // Teardown a published project
+          surge.teardown(hooks)({})
+          break
+        case '+': // Upgrade a published project
+          surge.plus(hooks)({})
           break
         case 'd':
           console.log("---------opts---------")
