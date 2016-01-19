@@ -3,7 +3,8 @@
 var Program = require('commander')
 var colors = require('colors')
 var Surge = require('surge')
-var surge = new Surge
+var hooks = require('../hooks.js')
+var surge = Surge({ platform: 'roguemont.com' })
 
 /* START -- make `flint run` default command -- */
 var flintIndex = getFlintIndex()
@@ -50,21 +51,32 @@ exec(checkversion, (err, version) => {
 Program
   .command('whoami')
   .description('see who you are logged in as')
-  .action(surge.whoami({}))
+  .action(surge.whoami(hooks))
 
 Program
   .command('login')
   .description('login to upload flint apps')
-  .action(surge.login({}))
+  .action(surge.login(hooks))
 
 Program
   .command('logout')
-  .action(surge.logout({}))
+  .description('log out of your account')
+  .action(surge.logout(hooks))
 
 Program
-  .command('teardown')
+  .command('teardown [domain]')
   .description('tear down an uploaded flint app')
-  .action(surge.teardown({}))
+  .action(surge.teardown(hooks))
+
+Program
+  .command('list')
+  .description('List all the projects you’ve published')
+  .action(surge.list(hooks))
+
+Program
+  .command('plus [domain]')
+  .description('upgrade a project to Surge Plus')
+  .action(surge.plus(hooks))
 
 Program
   .version(require('../../package.json').version)
