@@ -2,6 +2,8 @@
 
 var Program = require('commander')
 var colors = require('colors')
+var Surge = require('surge')
+var surge = new Surge
 
 /* START -- make `flint run` default command -- */
 var flintIndex = getFlintIndex()
@@ -44,6 +46,25 @@ exec(checkversion, (err, version) => {
     }
   }
 })
+
+Program
+  .command('whoami')
+  .description('see who you are logged in as')
+  .action(surge.whoami({}))
+
+Program
+  .command('login')
+  .description('login to upload flint apps')
+  .action(surge.login({}))
+
+Program
+  .command('logout')
+  .action(surge.logout({}))
+
+Program
+  .command('teardown')
+  .description('tear down an uploaded flint app')
+  .action(surge.teardown({}))
 
 Program
   .version(require('../../package.json').version)

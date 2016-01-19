@@ -25,7 +25,8 @@
     "raven": "^0.8.1",
     "reapp-object-assign": "^1.0.0",
     "replace": "^0.3.0",
-    "rimraf": "^2.2.8"
+    "rimraf": "^2.2.8",
+    "surge": "0.17.6"
   },
   "bin": {
     "flint": "./entry/flint",
