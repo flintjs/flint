@@ -74,6 +74,12 @@ Program
   .action(surge.list(hooks))
 
 Program
+  .command('up')
+  .description('upload a project via Surge')
+  .action(surge.publish(hooks))
+
+
+Program
   .command('plus [domain]')
   .description('upgrade a project to Surge Plus')
   .action(surge.plus(hooks))
