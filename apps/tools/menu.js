@@ -48,21 +48,36 @@ view Menu {
     }
   })
 
+
+  function extractViewName(view) {
+    return view.replace(/-/g, '.')
+  }
+  function extractElementName(name) {
+    // slicing because h11 -> h1
+    return name.slice(0, -1)
+  }
+
   function focusElement(el) {
     return function() {
-      // slicing because h11 -> h1
+      const view = extractViewName(el.view)
       toEditor({
         type: 'focus:element',
-        key: el.key.slice(0, -1),
-        view: el.view,
-        filePath: _Motion.views[el.view].file
+        key: extractElementName(el.key),
+        view: view,
+        filePath: _Motion.views[view].file
       })
     }
   }
 
   function focusStyle(el) {
     return function() {
-      toEditor({ type: 'focus:style', el: el.el, view: el.view })
+      const view = extractViewName(el.view)
+      toEditor({
+        type: 'focus:style',
+        key: extractElementName(el.key),
+        view: view,
+        filePath: _Motion.views[view].file
+      })
     }
   }
 
