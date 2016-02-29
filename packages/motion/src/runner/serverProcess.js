@@ -9,7 +9,8 @@ import motiontools from 'motion-tools'
 import { p, readFile, readdir, handleError } from './lib/fns'
 
 const newLine = "\n"
-let OPTS, PORT
+
+let OPTS, PORT, CACHE
 
 export default function wport() {
   return 2283 + parseInt(PORT, 10)
@@ -19,50 +20,12 @@ Array.prototype.move = function(from, to) {
   this.splice(to, 0, this.splice(from, 1)[0]);
 }
 
-function scriptTags(files) {
-  return files
-    .map(file => `<script src="/_/${file}" class="__motionScript"></script>`)
-    .join(newLine)
-}
-
 function devToolsDisabled(req) {
   return OPTS.config && OPTS.config.tools === 'false' || req && req.query && req.query['!dev']
 }
 
-async function readScripts() {
-  try {
-    const dir = await readdir(OPTS.outDir)
-    const files = dir.filter(f => /\.jsf?$/.test(f.name)) // filter sourcemaps
-    const hasFiles = files.length
-
-    let paths = []
-
-    // deterministic order
-    if (hasFiles) {
-      paths = files.map(file => file.path).sort()
-
-      let mainIndex = 0
-
-      paths.forEach((p, i) => {
-        if (/[Mm]ain\.jsf?$/.test(p))
-          mainIndex = i
-      })
-
-      if (mainIndex !== -1)
-        paths.move(mainIndex, 0)
-    }
-
-    return paths
-  }
-  catch(e) {
-    handleError(e)
-  }
-}
-
 async function getScripts({ disableTools }) {
   try {
-    const files = await readScripts()
-
     return [
       '<div id="_motiondevtools" class="_motiondevtools"></div>',
       newLine,
@@ -81,7 +44,6 @@ async function getScripts({ disableTools }) {
       // devtools
       disableTools ? '' : [
         '<script src="/__/tools/externals.js"></script>',
-        '<script src="/__/tools/internals.js"></script>',
         '<script src="/__/tools/motiontools.js"></script>',
 `
   <script>
@@ -99,8 +61,7 @@ async function getScripts({ disableTools }) {
   </script>
 `,
       '<script src="/__/externals.js" id="__motionExternals"></script>',
-      '<script src="/__/internals.js" id="__motionInternals"></script>',
-      scriptTags(files),
+      '<script src="/__/app.js" id="__motionInternals"></script>',
       '<script>Motion.start()</script>',
       '<!-- END APP -->'
     ].join(newLine)
@@ -169,8 +130,8 @@ function run() {
     }
 
     // USER files
-    // user js files at '/_/filename.js'
-    server.use('/_', express.static('.motion/.internal/out'))
+    // hot reload files at '/_/filename.js'
+    server.use('/_', express.static('.motion/.internal/hot'))
     // user non-js files
     server.use('/', express.static('.', staticOpts))
     // user static files...
@@ -227,11 +188,20 @@ function run() {
 
 let ran = false
 
-process.on('message', function(opts) {
-  if (opts === 'EXIT')
+process.on('message', function(_msg) {
+  if (_msg === 'EXIT')
     return process.exit(2)
 
-  OPTS = JSON.parse(opts)
+  let msg = JSON.parse(_msg)
+
+  switch(msg.type) {
+    case 'opts':
+      OPTS = msg.data
+      break
+    case 'cache':
+      CACHE = msg.data
+      break
+  }
 
   if (ran) return
 

@@ -6,18 +6,19 @@ import { event } from './index'
 import { findBabelRuntimeRequires } from '../lib/findRequires'
 import babel from './babel'
 import bridge from '../bridge'
-import cache from '../cache'
+import Cache from '../cache'
 import builder from '../builder'
 import bundler from '../bundler'
 import scanner from './scanner'
 import opts from '../opts'
 
-const serializeCache = _.debounce(cache.serialize, 600)
+const serializeCache = _.debounce(Cache.serialize, 600)
 const hasFinished = () => hasBuilt() && opts('hasRunInitialInstall')
 const hasBuilt = () => opts('hasRunInitialBuild')
 const getAllImports = (src, imports) => [].concat(findBabelRuntimeRequires(src), imports)
 const scanNow = () => opts('build') || opts('watch') || !opts('hasRunInitialBuild')
 const isJSON = file => path.extname(file.path) == '.json'
+const hotReloadable = file => hasBuilt() && file.babel.isHot
 
 export function scripts({ inFiles = [], userStream }) {
   let State = {
@@ -57,7 +58,7 @@ export function scripts({ inFiles = [], userStream }) {
       // json
       .pipe($.if(isJSON,
         $.multipipe(
-          gulp.dest(opts('deps').internalDir),
+          gulp.dest(opts('outDir')),
           $.fn(buildDone),
           $.ignore.exclude(true)
         )
@@ -65,21 +66,28 @@ export function scripts({ inFiles = [], userStream }) {
       .pipe($.fn(processDependencies))
       .pipe($.fn(sendOutsideChanged)) // right after motion
       .pipe($.rename({ extname: '.js' }))
-      // internals
-      .pipe($.if(file => file.babel.isExported,
+      .pipe($.fn(markFileSuccess))
+      // internals after hot to keep bundle up to date
+      .pipe($.if(file => file.babel.isExported && hasBuilt(),
+        $.fn(file => {
+          bundler.writeInternals({ force: true, reload: !file.babel.isHot })
+        })
+      ))
+      // hot reload
+      .pipe($.if(hotReloadable,
         $.multipipe(
-          $.fn(removeNewlyInternal),
-          $.fn(markFileSuccess), // before writing to preserve path
-          gulp.dest(opts('deps').internalDir),
-          $.if(hasBuilt, $.fn(bundler.writeInternals.bind(null, { force: true }))),
-          $.fn(buildDone),
-          $.ignore.exclude(true)
+          gulp.dest(opts('hotDir')),
+          $.fn(hotReload)
         )
       ))
-      .pipe($.sourcemaps.write('.'))
-      .pipe($.fn(markFileSuccess))
-      .pipe($.if(checkWriteable, gulp.dest(opts('outDir'))))
-      .pipe($.fn(afterWrite))
+      // out to bundle
+      .pipe($.if(checkWriteable,
+        $.multipipe(
+          $.sourcemaps.write('.'),
+          gulp.dest(opts('outDir')),
+          $.fn(buildDone)
+        )
+      ))
       // temporary bugfix because gulp doesnt work well with watch (pending gulp 4)
       .pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn())
       .pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn()).pipe($.fn())
@@ -122,7 +130,7 @@ export function scripts({ inFiles = [], userStream }) {
       return false
     }
 
-    const prevFile = cache.getPrevious(file.relPath)
+    const prevFile = Cache.getPrevious(file.relPath)
     if (!prevFile) return false
 
     let outMTime, srcMTime
@@ -155,9 +163,8 @@ export function scripts({ inFiles = [], userStream }) {
       markDone(file)
 
       if (restored) {
-        cache.restorePrevious(file.relPath)
+        Cache.restorePrevious(file.relPath)
         out.goodScript(file)
-        afterWrite(file)
       }
 
       return restored
@@ -165,7 +172,7 @@ export function scripts({ inFiles = [], userStream }) {
   }
 
   function reset(file) {
-    cache.add(file.relPath)
+    Cache.add(file.relPath)
     emitter.emit('script:start', file)
     State.lastError = false
     State.curFile = file
@@ -184,7 +191,7 @@ export function scripts({ inFiles = [], userStream }) {
     logError(error, State.curFile)
 
     event.run('error', State.curFile, error)
-    cache.addError(error.fileName || '', error)
+    Cache.addError(error.fileName || '', error)
 
     if (error.fileName)
       error.file = path.relative(opts('appDir'), error.fileName)
@@ -222,10 +229,10 @@ export function scripts({ inFiles = [], userStream }) {
   // sets isInternal and willInstall
   // for handling npm and bundling related things
   function processDependencies(file) {
-    cache.setFileInternal(file.relPath, file.babel.isExported)
+    Cache.setFileInternal(file.relPath, file.babel.isExported)
 
     const scan = () => {
-      cache.setFileImports(file.relPath, file.babel.imports)
+      Cache.setFileImports(file.relPath, file.babel.imports)
       bundler.scanFile(file)
       State.awaitingScan[file.relPath] = false
     }
@@ -252,7 +259,7 @@ export function scripts({ inFiles = [], userStream }) {
   // detects if a file has changed not inside views for hot reloads correctness
   function sendOutsideChanged(file) {
     let src = file.contents.toString()
-    let meta = cache.getFileMeta(file.path)
+    let meta = Cache.getFileMeta(file.path)
 
     if (!meta) return
 
@@ -270,7 +277,7 @@ export function scripts({ inFiles = [], userStream }) {
     }
 
     if (opts('hasRunInitialBuild'))
-      bridge.broadcast('file:outsideChange', { name: cache.relative(file.path), changed })
+      bridge.broadcast('file:outsideChange', { name: Cache.relative(file.path), changed })
   }
 
   function checkWriteable(file) {
@@ -292,14 +299,11 @@ export function scripts({ inFiles = [], userStream }) {
     return false
   }
 
-  function afterWrite(file) {
-    if (isSourceMap(file.path)) return
-
-    buildDone(file)
-
-    // avoid during initial build
+  function hotReload(file) {
+    // avoid
+    if (!file.babel.isHot) return
     if (!hasFinished()) return
-    if (file.babel.isExported) return
+    if (file.babel.isInternal) return
 
     // run stuff after each change on build --watch
     doBuild()
@@ -307,11 +311,6 @@ export function scripts({ inFiles = [], userStream }) {
     if (State.lastError) {
       log.gulp('State.lastError', State.lastError)
       return // avoid if error
-    }
-
-    const finish = () => {
-      emitter.emit('script:end', { path: file.relPath })
-      bridge.broadcast('script:add', file.message)
     }
 
     // dont broadcast script if installing/bundling
@@ -324,14 +323,18 @@ export function scripts({ inFiles = [], userStream }) {
 
     if (file.willInstall) {
       log.gulp('willInstall', true)
-      cache.setFileInstalling(file.relPath, true)
+      Cache.setFileInstalling(file.relPath, true)
       return
     }
 
-    finish()
+    // emit hot reload
+    emitter.emit('script:end', { path: file.relPath })
+    bridge.broadcast('script:add', file.message)
   }
 
   async function buildDone(file) {
+    if (isSourceMap(file.path)) return
+
     if (file.finishingFirstBuild) {
       opts.set('hasRunInitialBuild', true)
       log.gulp('buildDone!!'.green.bold)
@@ -353,7 +356,7 @@ export function scripts({ inFiles = [], userStream }) {
     log.gulp('DOWN', 'success'.green, 'internal?', file.babel.isExported)
 
     // update cache error / state
-    cache.update(file.relPath)
+    Cache.update(file.relPath)
 
     if (file.babel.isExported) return
 
@@ -364,22 +367,10 @@ export function scripts({ inFiles = [], userStream }) {
     bridge.broadcast('compile:success', file.message, 'error')
 
     // check if other errors left still in queue
-    const error = cache.getLastError()
+    const error = Cache.getLastError()
     if (!error) return
     log.gulp('cache last error', error)
     bridge.broadcast('compile:error', { error }, 'error')
-  }
-
-  // ok so we start a file
-  // its built into .motion/out
-  // we then add an export
-  // now we need to remove it from .motion/out
-  function removeNewlyInternal(file) {
-    // resolve path from .motion/.internal/deps/internals/xyz.js back to xyz.js
-    // then resolve path to .motion/.internal/out/xyz.js
-    const outPath = p(opts('outDir'), file.relPath)
-    // log.gulp('remove newly internal', outPath)
-    rm(outPath)
   }
 }
 
