@@ -1,7 +1,7 @@
-import deepmerge from 'deepmerge'
-import { path, log } from '../../lib/fns'
+import { _, path, log } from '../../lib/fns'
 import opts from '../../opts'
 import cache from '../../cache'
+import extend from 'deep-extend'
 
 let runnerRoot = path.resolve(path.join(__dirname, '..', '..', '..', '..'))
 let runnerModules = path.join(runnerRoot, 'node_modules')
@@ -10,7 +10,7 @@ let runnerModules = path.join(runnerRoot, 'node_modules')
 let fileStyleFolder = 'file?name=assets/styles/[name]-[hash].css'
 
 export default function webpackConfig(filename, config = {}) {
-  const conf = deepmerge({
+  let result = extend({
     context: runnerRoot,
     debug: opts('debug'),
     output: {
@@ -24,9 +24,11 @@ export default function webpackConfig(filename, config = {}) {
     externals: {
       react: 'exports.React',
       'react-dom': 'exports.ReactDOM',
+      'react-addons-css-transition-group': 'exports.ReactCSSTransitionGroup',
+      'react-addons-transition-group': 'exports.ReactTransitionGroup',
       history: 'exports.history',
       radium: 'exports.radium',
-      'babel-polyfill': 'var $'
+      'babel-polyfill': 'var $',
     },
     devtool: 'source-map',
     node: {
@@ -65,5 +67,5 @@ export default function webpackConfig(filename, config = {}) {
     }
   }, config)
 
-  return conf
+  return result
 }

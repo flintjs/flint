@@ -151,7 +151,7 @@ async function setupCliOpts(cli) {
 function setupDirs() {
   // base dirs
   OPTS.motionDir = p(OPTS.appDir, '.motion')
-  OPTS.modulesDir = p(OPTS.motionDir, 'node_modules')
+  OPTS.modulesDir = p(OPTS.appDir, 'node_modules')
   OPTS.internalDir = p(OPTS.motionDir, '.internal')
   OPTS.template = OPTS.template || '.motion/index.html'
   OPTS.buildDir = OPTS.out ? p(OPTS.out) : p(OPTS.motionDir, 'build')
@@ -161,7 +161,7 @@ function setupDirs() {
   OPTS.deps.dir = p(OPTS.internalDir, 'deps')
   OPTS.deps.internalDir = p(OPTS.internalDir, 'deps', 'internal')
   OPTS.deps.assetsDir = p(OPTS.deps.dir, 'assets')
-  OPTS.deps.internalsIn = p(OPTS.deps.dir, 'internals.in.js')
+  OPTS.deps.internalsIn = p(OPTS.internalDir, 'internals.in.js')
   OPTS.deps.internalsOut = p(OPTS.deps.dir, 'internals.js')
   OPTS.deps.externalsIn = p(OPTS.deps.dir, 'externals.in.js')
   OPTS.deps.externalsOut = p(OPTS.deps.dir, 'externals.js')
@@ -170,6 +170,7 @@ function setupDirs() {
   OPTS.configFile = p(OPTS.motionDir, 'config.js')
   OPTS.stateFile = p(OPTS.internalDir, 'state.json')
   OPTS.outDir = p(OPTS.internalDir, 'out')
+  OPTS.hotDir = p(OPTS.internalDir, 'hot')
   OPTS.styleDir = p(OPTS.internalDir, 'styles')
   OPTS.styleOutDir = p(OPTS.buildDir, '_')
   OPTS.styleOutName = 'styles.css'
@@ -178,10 +179,12 @@ function setupDirs() {
 function setupConfig(cli, config) {
   // config
   OPTS.config = Object.assign(
+    // defaults TODO move somewhere nice
     {
       minify: true,
       debug: false,
-      routing: true
+      routing: true,
+      entry: 'main.js'
     },
     config
   )
@@ -191,6 +194,7 @@ function setupConfig(cli, config) {
   if (cli.pretty) OPTS.config.pretty = true
   if (cli.port) OPTS.config.port = cli.port
   if (cli.host) OPTS.config.host = cli.host
+  if (cli.entry) OPTS.config.entry = cli.entry
 }
 
 export function set(key, val) {

@@ -2,42 +2,77 @@ import MotionTransform from 'motion-transform'
 import { isProduction } from './helpers'
 import opts from '../../opts'
 import onMeta from './onMeta'
-import { log } from '../../lib/fns'
+import extend from 'deep-extend'
+import { _, p, log } from '../../lib/fns'
 import writeStyle from '../../lib/writeStyle'
-import deepmerge from 'deepmerge'
 
-let motion = null
 const id = () => {}
+let hasSetupAfterRun = false
+let plugin = null
+let onFinishCb = null
 
-// allow these to change per-call
-let _onImports, _onExports
-let onImports = _ => _onImports(_)
-let onExports = _ => _onExports(_)
+function babelConfig() {
+  return {
+    breakConfig: true, // avoid reading .babelrc
+    jsxPragma: 'Motion.createElement',
+    stage: 0,
+    blacklist: ['es6.tailCall'],
+    retainLines: opts('config').pretty ? false : true,
+    comments: true,
+    optional: ['regenerator', 'runtime'],
+    extra: {
+      production: isProduction()
+    },
+    ...(opts('config').babel || {})
+  }
+}
 
-export function file(config) {
-  _onImports = config.onImports
-  _onExports = config.onExports
+export function file(onFinish) {
+  let config = babelConfig()
 
-  // only instantiate once
-  if (!motion) {
-    const motionOpts = {
-      basePath: opts('appDir'),
-      production: isProduction(),
-      selectorPrefix: opts('config').selectorPrefix || '#_motionapp ',
-      routing: opts('config').routing,
-      log,
-      onMeta,
-      writeStyle,
-      onImports: _ => onImports(_),
-      onExports: _ => onExports(_)
-    }
+  config.plugins = config.plugins || []
+  config.plugins.push(motionFilePlugin(onFinish))
 
-    motion = MotionTransform.file(motionOpts)
+  return config
+}
+
+function motionFilePlugin(onFinish) {
+  // update info cb per-call
+  onFinishCb = onFinish
+
+  // only instantiate plugin as needed
+
+  // on init
+  plugin = plugin || MotionTransform.file({
+    ...fileConf(),
+    firstRun: true,
+    onFinish: _ => onFinishCb(_)
+  })
+
+  // on watch (hot reloads)
+  if (opts('hasRunInitialBuild') && !hasSetupAfterRun) {
+    hasSetupAfterRun = true
+    plugin = MotionTransform.file({
+      ...fileConf(),
+      firstRun: false,
+      onFinish: _ => onFinishCb(_)
+    })
   }
 
-  return getBabelConfig({
-    plugins: [motion]
-  })
+  return plugin
+}
+
+function fileConf() {
+  return {
+    basePath: opts('appDir'),
+    production: isProduction(),
+    selectorPrefix: opts('config').selectorPrefix || '#_motionapp ',
+    routing: opts('config').routing,
+    entry: p(opts('appDir'), opts('config').entry),
+    log,
+    onMeta,
+    writeStyle
+  }
 }
 
 export function app() {
@@ -49,29 +84,6 @@ export function app() {
     compact: true,
     extra: { production: isProduction() }
   }
-}
-
-export function getBabelConfig({ plugins }) {
-  const babelConf = {
-    breakConfig: true, // avoid reading .babelrc
-    jsxPragma: 'view.el',
-    stage: 1,
-    blacklist: ['es6.tailCall', 'strict'],
-    retainLines: opts('config').pretty ? false : true,
-    comments: true,
-    optional: ['regenerator', 'runtime'],
-    plugins,
-    extra: {
-      production: isProduction()
-    },
-  }
-
-  const userConf = opts('config').babel
-
-  if (userConf)
-    return deepmerge(babelConf, userConf)
-  else
-    return babelConf
 }
 
 export default {
